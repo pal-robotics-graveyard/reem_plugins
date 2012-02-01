@@ -18,7 +18,9 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 add_definitions(-fPIC)
-rosbuild_add_library(reemControllerPlugin src/reem_controller_plugin.cpp)
+
+rosbuild_add_library(reemDiffdrivePlugin src/reem_diffdrive_plugin.cpp)
+rosbuild_link_boost(reemDiffdrivePlugin thread)
 
 #uncomment if you have defined messages
 #rosbuild_genmsg()

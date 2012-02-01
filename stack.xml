@@ -1,7 +1,7 @@
 <stack>
   <description brief="reem_simulator">Reem specific simulation components.</description>
   <author>Maintained by Jose Capriles</author>
-  <license>BSD</license>  
+  <license>Modified BSD</license>
   <review status="unreviewed" notes=""/>
   <depend stack="common_msgs" /> <!-- nav_msgs, sensor_msgs, geometry_msgs -->
   <depend stack="ros" />
