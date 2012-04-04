@@ -149,7 +149,7 @@ void reemDiffdrivePlugin::LoadChild(XMLConfigNode *node)
                                                           boost::bind(&reemDiffdrivePlugin::cmdVelCallback, this, _1),
                                                           ros::VoidPtr(), &queue_);
   sub_ = rosnode_->subscribe(so);
-  pub_ = rosnode_->advertise<nav_msgs::Odometry>("odom", 1);
+  pub_ = rosnode_->advertise<nav_msgs::Odometry>("/erratic_odometry/odom", 1);
 }
 
 // Initialize the controller
