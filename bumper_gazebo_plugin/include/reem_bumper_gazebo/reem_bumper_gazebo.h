@@ -1,136 +1,96 @@
 /*
- * Software License Agreement (Modified BSD License)
+ *  Gazebo - Outdoor Multi-Robot Simulator
+ *  Copyright (C) 2003
+ *     Nate Koenig & Andrew Howard
  *
- *  Copyright (c) 2012, PAL Robotics, S.L.
- *  All rights reserved.
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
  *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions
- *  are met:
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *   * Neither the name of PAL Robotics, S.L. nor the names of its
- *     contributors may be used to endorse or promote products derived
- *     from this software without specific prior written permission.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef GAZEBO_ROS_BUMPER_CONTROLLER_HH
-#define GAZEBO_ROS_BUMPER_CONTROLLER_HH
-
-#define USE_CBQ
-#ifdef USE_CBQ
+/*
+ * Desc: Bumper Controller
+ * Author: Nate Koenig mod by John Hsu
+ * Date: 24 Sept 2008
+ */
+#include <ros/ros.h>
 #include <ros/callback_queue.h>
 #include <ros/advertise_options.h>
-#endif
 
 #include <sys/time.h>
-#include <std_msgs/Bool.h>
 
-#include <gazebo/Controller.hh>
-#include <gazebo/Entity.hh>
-#include <gazebo/Param.hh>
+#include <gazebo.hh>
+#include <gazebo/common/Plugin.hh>
+#include <gazebo/sensors/ContactSensor.hh>
+#include <gazebo/plugins/ContactPlugin.hh>
 
-// ros messages
-#include <ros/ros.h>
-#include "boost/thread/mutex.hpp"
+#include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
+
 #include <std_msgs/String.h>
 
 #include <gazebo_msgs/ContactState.h>
 #include <gazebo_msgs/ContactsState.h>
+#include <reem_msgs/Bumper.h>
 
 namespace gazebo
 {
-  class ContactSensor;
-
-
   /// \brief A Bumper controller
-  class My_Generic_Bumper : public Controller
+  class ReemGazeboBumper : public gazebo::SensorPlugin
   {
     /// Constructor
-      public: My_Generic_Bumper(Entity *parent );
+    public: ReemGazeboBumper();
 
     /// Destructor
-      public: virtual ~My_Generic_Bumper();
+    public: ~ReemGazeboBumper();
 
-    /// Load the controller
-    /// \param node XML config node
-    protected: virtual void LoadChild(XMLConfigNode *node);
-
-    /// Init the controller
-    protected: virtual void InitChild();
+    /// \brief Load the plugin
+    /// \param take in SDF root element
+    public: void Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf);
 
     /// Update the controller
-    protected: virtual void UpdateChild();
+    protected: virtual void Update();
 
-    /// Finalize the controller
-    protected: virtual void FiniChild();
+  private:
 
-    /// The parent Model
-    private: ContactSensor *myParent;
+      /// \brief pointer to ros node
+      ros::NodeHandle* rosnode_;
+      ros::Publisher contact_pub_;
 
-    /// \brief Return information in this body (link) coordinate
-    ///        if unavailable, use "/map" and global gazebo world frame
-    private: Body *myFrame;
+      /// \brief set topic name of broadcast
+      std::string bumper_topic_name_;
+      std::string frame_name_;
 
-    /// \brief pointer to ros node
-    private: ros::NodeHandle* rosnode_;
-    private: ros::Publisher contact_pub_;
+      gazebo::sensors::ContactSensorPtr sensor_;
+      gazebo::physics::WorldPtr parent_;
 
-    /// \brief set topic name of broadcast
-    private: ParamT<std::string> *bumperTopicNameP;
-    private: std::string bumperTopicName;
+      /// \brief broadcast some string for now.
+      gazebo_msgs::ContactsState contact_state_msg_;
 
-    private: ParamT<std::string> *frameNameP;
-    private: std::string frameName;
+      /// \brief for setting ROS name space
+      std::string robot_namespace_;
 
-    private: ParamT<std::string> *frameIdP;
-    private: std::string frameId;
+      /// \brief Keep track of number of connctions
+      int contact_connect_count_;
+      void ContactConnect();
+      void ContactDisconnect();
+      ros::CallbackQueue contact_queue_;
+      void ContactQueueThread();
+      boost::thread callback_queue_thread_;
 
-    /// \brief A mutex to lock access to fields that are used in message callbacks
-    private: boost::mutex lock;
-
-    /// \brief broadcast some string for now.
-    private: gazebo_msgs::ContactsState contactsStateMsg;
-    private: std_msgs::Bool boolMsg;
-
-    /// \brief for setting ROS name space
-    private: ParamT<std::string> *robotNamespaceP;
-    private: std::string robotNamespace;
-
-    /// \brief Keep track of number of connctions
-    private: int contactConnectCount;
-    private: void ContactConnect();
-    private: void ContactDisconnect();
-
-#ifdef USE_CBQ
-    private: ros::CallbackQueue contact_queue_;
-    private: void ContactQueueThread();
-    private: boost::thread callback_queue_thread_;
-#endif
+      // Pointer to the update event connection
+      event::ConnectionPtr update_connection_;
 
   };
 
-  /** \} */
-  /// \}
-
 }
-
-#endif

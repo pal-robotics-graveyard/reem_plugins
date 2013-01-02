@@ -32,117 +32,154 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <gazebo/Sensor.hh>
-#include <gazebo/Global.hh>
-#include <gazebo/XMLConfig.hh>
-#include <gazebo/Simulator.hh>
-#include <gazebo/gazebo.h>
-#include <gazebo/GazeboError.hh>
-#include <gazebo/ControllerFactory.hh>
-#include <limits>
 #include <range_gazebo_plugin/gazebo_ros_sonar.h>
+#include <gazebo/common/Event.hh>
+#include <gazebo/physics/physics.h>
 
 using namespace gazebo;
 
-GZ_REGISTER_DYNAMIC_CONTROLLER("gazebo_ros_sonar", GazeboRosSonar)
-
-GazeboRosSonar::GazeboRosSonar(Entity *parent) : Controller(parent)
+GazeboRosSonar::GazeboRosSonar()
 {
-  sensor_ = dynamic_cast<RaySensor*>(parent);
-  if (!sensor_) gzthrow("GazeboRosSonar controller requires a RaySensor as its parent");
-
-  Param::Begin(&parameters);
-  topic_param_ = new ParamT<std::string>("topicName", "sonar", false);
-  frame_id_param_ = new ParamT<std::string>("frameId", "", false);
-  radiation_param_ = new ParamT<std::string>("radiation","ultrasound",false);
-  fov_param_ = new ParamT<double>("fov", 0.05, false);
-  gaussian_noise_ = new ParamT<double>("gaussianNoise", 0.0, 0);
-  Param::End();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Destructor
 GazeboRosSonar::~GazeboRosSonar()
 {
-  delete topic_param_;
-  delete frame_id_param_;
-  delete radiation_param_;
-  delete fov_param_;
+    sensor_->SetActive(false);
+    event::Events::DisconnectWorldUpdateStart(updateConnection);
+    node_handle_->shutdown();
+    delete node_handle_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Load the controller
-void GazeboRosSonar::LoadChild(XMLConfigNode *node)
+void GazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 {
-  ROS_INFO("INFO: gazebo_ros_ir plugin loading" );
-  topic_param_->Load(node);
-  frame_id_param_->Load(node);
-  radiation_param_->Load(node);
-  fov_param_->Load(node);
-  gaussian_noise_->Load(node);
+    ROS_DEBUG("Starting range gazebo plugin");
+
+    // Get then name of the parent sensor
+    sensor_ = boost::shared_dynamic_cast<sensors::RaySensor>(_parent);
+    if (!sensor_)
+    {
+        gzthrow("GazeboRosSonar requires a Ray Sensor as its parent");
+        return;
+    }
+
+    // Get the world name.
+    std::string worldName = sensor_->GetWorldName();
+    parent_ = gazebo::physics::get_world(worldName);
+
+    this->namespace_ = "";
+    if (_sdf->HasElement("robotNamespace"))
+        this->namespace_ = _sdf->GetElement("robotNamespace")->GetValueString();
+
+    if (!_sdf->HasElement("topicName"))
+    {
+        ROS_WARN("Range plugin missing <topicName>, defaults to sonar");
+        this->topic_name_ = "sonar";
+    }
+    else
+        this->topic_name_ = _sdf->GetElement("topicName")->GetValueString();
+
+    if (!_sdf->HasElement("frameId"))
+    {
+        ROS_WARN("Range plugin missing <frameId>, defaults to sonar_base_link");
+        this->frame_id_ = "sonar_base_link";
+    }
+    else
+        this->frame_id_ = _sdf->GetElement("frameId")->GetValueString();
+
+    if (!_sdf->HasElement("radiation"))
+    {
+        ROS_WARN("Range plugin missing <radiation>, defaults to ultrasound");
+        this->radiation_ = "ultrasound";
+
+    }
+    else
+        this->radiation_ = _sdf->GetElement("radiation")->GetValueString();
+
+    if (!_sdf->HasElement("fov"))
+    {
+        ROS_WARN("Range plugin missing <fov>, defaults to 0.05");
+        this->fov_ = 0.05;
+    }
+    else
+        this->fov_ = _sdf->GetElement("fov")->GetValueDouble();
+
+    if (!_sdf->HasElement("gaussianNoise"))
+    {
+        ROS_WARN("Range plugin missing <gaussianNoise>, defaults to 0.0");
+        this->gaussian_noise_ = 0.0;
+    }
+    else
+        this->gaussian_noise_ = _sdf->GetElement("gaussianNoise")->GetValueDouble();
+
+    ROS_DEBUG("Loaded with values:   robotNamespace = %s, topicName = %s, frameId = %s, radiation = %s, fov = %f, noise = %f",
+             this->namespace_.c_str(), this->topic_name_.c_str(),this->frame_id_.c_str(),this->radiation_.c_str(),
+             this->fov_, this->gaussian_noise_);
+
+    node_handle_ = new ros::NodeHandle(this->namespace_);
+
+    range_.header.frame_id = frame_id_;
+    if (radiation_==std::string("ultrasound"))
+        range_.radiation_type = sensor_msgs::Range::ULTRASOUND;
+    else
+        range_.radiation_type = sensor_msgs::Range::INFRARED;
+
+    range_.field_of_view = fov_;
+    range_.max_range = sensor_->GetRangeMax();
+    range_.min_range = sensor_->GetRangeMin();
+
+
+    node_handle_ = new ros::NodeHandle(namespace_);
+    publisher_ = node_handle_->advertise<sensor_msgs::Range>(topic_name_, 1);
+
+    updateConnection = sensor_->GetLaserShape()->ConnectNewLaserScans(boost::bind(&GazeboRosSonar::Update, this));
+
+    // activate RaySensor
+    sensor_->SetActive(true);
+
+    ROS_DEBUG("%s is active!",frame_id_.c_str());
 }
 
-///////////////////////////////////////////////////////
-// Initialize the controller
-void GazeboRosSonar::InitChild()
-{
-  Range.header.frame_id = **frame_id_param_;
-
-  if (**radiation_param_==std::string("ultrasound"))
-      Range.radiation_type = sensor_msgs::Range::ULTRASOUND;
-  else
-      Range.radiation_type = sensor_msgs::Range::INFRARED;
-
-  Range.field_of_view = **fov_param_;
-  Range.max_range = sensor_->GetMaxRange();
-  Range.min_range = sensor_->GetMinRange();
-
-  sensor_->SetActive(false);
-  node_handle_ = new ros::NodeHandle("");
-  publisher_ = node_handle_->advertise<sensor_msgs::Range>(**topic_param_, 10);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Utility for adding noise
 double GazeboRosSonar::GaussianKernel(double mu,double sigma)
 {
     // using Box-Muller transform to generate two independent standard normally disbributed normal variables
-    // see wikipedia
-    double U = (double)rand()/(double)RAND_MAX; // normalized uniform random variable
-    double V = (double)rand()/(double)RAND_MAX; // normalized uniform random variable
+    double U = (double)rand()/(double)RAND_MAX;             // normalized uniform random variable
+    double V = (double)rand()/(double)RAND_MAX;             // normalized uniform random variable
     double X = sqrt(-2.0 * ::log(U)) * cos( 2.0*M_PI * V);
-    //double Y = sqrt(-2.0 * ::log(U)) * sin( 2.0*M_PI * V); // the other indep. normal variable
-    // we'll just use X
-    // scale to our mu and sigma
+
+    // we'll just use X scale to our mu and sigma
     X = sigma * X + mu;
     return X;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Update the controller
-void GazeboRosSonar::UpdateChild()
+void GazeboRosSonar::Update()
 {
-  if (!sensor_->IsActive()) sensor_->SetActive(true);
+    //Activate sensor
+    if (!sensor_->IsActive())
+        sensor_->SetActive(true);
 
-  Range.header.stamp.sec  = (Simulator::Instance()->GetSimTime()).sec;
-  Range.header.stamp.nsec = (Simulator::Instance()->GetSimTime()).nsec;
-  Range.range = std::numeric_limits<sensor_msgs::Range::_range_type>::max();
+    range_.header.stamp.sec  = (parent_->GetSimTime()).sec;
+    range_.header.stamp.nsec = (parent_->GetSimTime()).nsec;
 
-  for(int i = 0; i < sensor_->GetRangeCount(); ++i) {
-    double ray = sensor_->GetRange(i);
-    if (ray < Range.range) Range.range = ray;
-  }
+    // find ray with minimal range
+    range_.range = std::numeric_limits<sensor_msgs::Range::_range_type>::max();
 
-  Range.range = std::min(Range.range + this->GaussianKernel(0,**gaussian_noise_), sensor_->GetMaxRange());
-  publisher_.publish(Range);
+    int num_ranges = sensor_->GetLaserShape()->GetSampleCount() * sensor_->GetLaserShape()->GetVerticalSampleCount();
+
+    for(int i = 0; i < num_ranges; ++i) {
+        double ray = sensor_->GetLaserShape()->GetRange(i);
+        if (ray < range_.range) range_.range = ray;
+    }
+
+    // add Gaussian noise and limit to min/max range
+    if (range_.range < range_.max_range)
+        range_.range = std::min(range_.range + this->GaussianKernel(0,gaussian_noise_), sensor_->GetRangeMax());
+
+    publisher_.publish(range_);
+
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Finalize the controller
-void GazeboRosSonar::FiniChild()
-{
-  sensor_->SetActive(false);
-  node_handle_->shutdown();
-  delete node_handle_;
-}
+GZ_REGISTER_SENSOR_PLUGIN(GazeboRosSonar)
 

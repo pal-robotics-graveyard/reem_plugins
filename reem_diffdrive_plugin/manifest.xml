@@ -1,22 +1,21 @@
 <package>
   <description brief="reem_controller_plugin">
-
-     Reem controller plugin
-
+     Reem controller plugin:  differential drive plugin for reem robot model. This plugin may also work for other differential drive robots. 
   </description>
   <author>Jose Capriles</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
+
+  <depend package="roscpp"/>
   <depend package="gazebo"/>
+  <depend package="gazebo_plugins"/>
   <depend package="nav_msgs"/>
   <depend package="geometry_msgs"/>
   <depend package="sensor_msgs"/>
 
   <export>
-    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib" />
     <gazebo plugin_path="${prefix}/lib" />
   </export>
-
 </package>
 
 

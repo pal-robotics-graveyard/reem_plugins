@@ -32,52 +32,56 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <gazebo/Controller.hh>
-#include <gazebo/Entity.hh>
-#include <gazebo/Model.hh>
-#include <gazebo/RaySensor.hh>
-#include <gazebo/Param.hh>
 
-#include <ros/callback_queue.h>
 #include <ros/ros.h>
 
+#include <gazebo.hh>
+#include <gazebo/common/Plugin.hh>
+#include <gazebo/sensors/RaySensor.hh>
+
+#include <ros/callback_queue.h>
 #include <sensor_msgs/Range.h>
+
 
 namespace gazebo
 {
 
-class GazeboRosSonar : public Controller
+class GazeboRosSonar : public  gazebo::SensorPlugin
 {
 public:
-  GazeboRosSonar(Entity *parent);
+  GazeboRosSonar();
   virtual ~GazeboRosSonar();
 
 protected:
-  virtual void LoadChild(XMLConfigNode *node);
-  virtual void InitChild();
-  virtual void UpdateChild();
-  virtual void FiniChild();
+  virtual void Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf);
+  virtual void Update();
 
   /// \brief Gaussian noise generator
 private:
   double GaussianKernel(double mu,double sigma);
 
 private:
-  RaySensor *sensor_;
+  gazebo::sensors::RaySensorPtr sensor_;
 
   ros::NodeHandle* node_handle_;
   ros::Publisher publisher_;
 
-  sensor_msgs::Range Range;
+  sensor_msgs::Range range_;
 
-  ParamT<std::string> *namespace_param_;
-  ParamT<std::string> *topic_param_;
-  ParamT<std::string> *frame_id_param_;
-  ParamT<std::string> *radiation_param_;
-  ParamT<double> *fov_param_;
-  ParamT<double> *gaussian_noise_;
+  std::string namespace_;
+  std::string topic_name_;
+  std::string frame_id_;
+  std::string radiation_;
+  double fov_;
+  double gaussian_noise_;
 
-  //SensorModel sensor_model_;
+  gazebo::physics::WorldPtr parent_;
+
+  common::Time last_time;
+
+  gazebo::event::ConnectionPtr updateConnection;
+
+
 };
 
 } // namespace gazebo

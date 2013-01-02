@@ -29,12 +29,8 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
+rosbuild_add_boost_directories()
+
 rosbuild_add_library(reem_bumper_gazebo src/reem_bumper_gazebo.cpp)
 rosbuild_link_boost(reem_bumper_gazebo thread)
 
-exec_program("glxinfo" OUTPUT_VARIABLE glx_out RETURN_VALUE glx_val)
-if(${glx_val} EQUAL 0)
-  message(STATUS "run test here")
-else(${glx_val} EQUAL 0)
-  message(STATUS "no test here")
-endif(${glx_val} EQUAL 0)
